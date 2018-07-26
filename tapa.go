@@ -41,12 +41,12 @@ func (t *Tapa) Run() {
 	var count int
 	for i := 1; i <= t.ConcurrentUsers; i++ {
 		for j := 1; j <= t.RequestsPerUser; j++ {
+			t.doRequest()
 			count++
 			if count%100 == 0 {
 				fmt.Println(count, "/", t.ConcurrentUsers*t.RequestsPerUser)
 			}
 			logrus.Info("User %d Request %d Status: %d \n", i, j)
-			t.doRequest()
 		}
 	}
 
