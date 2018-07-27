@@ -1,8 +1,8 @@
 package tapa
 
 import (
-	"time"
 	"math"
+	"time"
 )
 
 type Timers struct {
@@ -18,21 +18,17 @@ type Timers struct {
 
 func (t *Timers) Add(timer *Timer) {
 	t.Timers = append(t.Timers, timer)
-	t.calculate()
 }
 
 func (t *Timers) calculate() {
-	t.Size++
 	t.calcCumulative()
 	t.calcMean()
 	t.calcVariance()
 	t.calcStdDev()
 	t.calcMax()
 	t.calcMin()
-	if t.Size != len(t.Timers) {
-		panic("size not equal to len(Timers)")
-	}
 }
+
 func (t *Timers) calcCumulative() time.Duration {
 	t.Cumulative = 0
 	for _, d := range t.Timers {
@@ -40,6 +36,7 @@ func (t *Timers) calcCumulative() time.Duration {
 	}
 	return t.Cumulative
 }
+
 func (t *Timers) calcMean() time.Duration {
 	t.Mean = t.calcCumulative() / time.Duration(len(t.Timers))
 	return t.Mean

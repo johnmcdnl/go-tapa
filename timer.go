@@ -1,11 +1,10 @@
 package tapa
 
 import (
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
 )
-
-
 
 type Timer struct {
 	ID       string        `json:"-"`
