@@ -18,6 +18,7 @@ type Timers struct {
 
 func (t *Timers) Add(timer *Timer) {
 	t.Timers = append(t.Timers, timer)
+	t.Size++
 }
 
 func (t *Timers) calculate() {
@@ -38,11 +39,17 @@ func (t *Timers) calcCumulative() time.Duration {
 }
 
 func (t *Timers) calcMean() time.Duration {
+	if len(t.Timers) == 0 {
+		return 0
+	}
 	t.Mean = t.calcCumulative() / time.Duration(len(t.Timers))
 	return t.Mean
 }
 
 func (t *Timers) calcVariance() time.Duration {
+	if len(t.Timers) == 0 {
+		return 0
+	}
 	mean := t.calcMean()
 
 	var sumValueSquared time.Duration

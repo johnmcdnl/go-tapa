@@ -4,25 +4,28 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"sync"
-
 	"github.com/pkg/errors"
+	"io"
 	"github.com/sirupsen/logrus"
+	"time"
 )
 
 type Tapa struct {
-	*Timer          `json:"timer"`
-	*Timers         `json:"timers"`
-	ConcurrentUsers int           `json:"concurrent_users"`
-	RequestsPerUser int           `json:"requests_per_user"`
-	TotalRequests   int           `json:"total_requests"`
-	Request         *http.Request `json:"-"`
+	*Timer  `json:"timer"`
+	*Timers `json:"timers"`
+	concurrentUsers int
+	requestsPerUser int
+	totalRequests   int
+	request         *http.Request
 }
 
-func New() *Tapa {
+func New(users, requests int) *Tapa {
 	return &Tapa{
-		Timer:  newTimer(),
-		Timers: new(Timers),
+		Timer:           newTimer(),
+		Timers:          new(Timers),
+		concurrentUsers: users,
+		requestsPerUser: requests,
+		totalRequests:   users * requests,
 	}
 
 }
@@ -35,99 +38,77 @@ func (t *Tapa) String() string {
 	return string(j)
 }
 
+func (t *Tapa) AddRequest(method, url string, body io.Reader) {
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		panic(err)
+	}
+	t.request = req
+}
+
 func (t *Tapa) Run() {
 	t.Timer.start()
-	t.runConcurrent()
+	t.run()
 	t.Timer.stop()
 	t.calculate()
 }
 
-func (t *Tapa) doRequest() error {
-	t.TotalRequests++
-	var timer = newTimer()
-	timer.start()
-	resp, err := http.DefaultClient.Do(t.Request)
-	timer.stop()
+func (t *Tapa) run() {
+
+	t.warmUp()
+
+	jobs := make(chan *http.Request, t.concurrentUsers)
+	results := make(chan *Timer, t.concurrentUsers*t.requestsPerUser)
+	for w := 1; w <= t.concurrentUsers; w++ {
+		go t.addRequestToQueue(jobs, results)
+	}
+
+	for j := 1; j <= t.concurrentUsers*t.requestsPerUser; j++ {
+		req := *t.request
+		jobs <- &req
+	}
+	close(jobs)
+
+	for a := 1; a <= t.concurrentUsers*t.requestsPerUser; a++ {
+		t.Add(<-results)
+	}
+}
+
+func (t *Tapa) addRequestToQueue(jobs <-chan *http.Request, results chan<- *Timer) {
+	for req := range jobs {
+		timer := newTimer()
+		timer.start()
+		t.doRequest(req)
+		timer.stop()
+		results <- timer
+	}
+}
+
+func (t *Tapa) doRequest(req *http.Request) {
+	_, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	t.Timers.Add(timer)
-	return nil
-}
-
-func (t *Tapa) runConcurrent() {
-
-	var tasks []*Task
-
-	for i := 1; i <= t.ConcurrentUsers; i++ {
-		for j := 1; j <= t.RequestsPerUser; j++ {
-			tasks = append(tasks, NewTask(t.doRequest))
-		}
-	}
-
-	p := NewPool(tasks, t.ConcurrentUsers)
-	p.Run()
-}
-
-type Task struct {
-	Err error
-	f   func() error
-}
-
-func NewTask(f func() error) *Task {
-	return &Task{f: f}
-}
-
-func (t *Task) Run(wg *sync.WaitGroup) {
-	t.Err = t.f()
-	wg.Done()
-}
-
-type Pool struct {
-	Tasks []*Task
-
-	concurrency int
-	tasksChan   chan *Task
-	wg          sync.WaitGroup
-}
-
-func NewPool(tasks []*Task, concurrency int) *Pool {
-	return &Pool{
-		Tasks:       tasks,
-		concurrency: concurrency,
-		tasksChan:   make(chan *Task),
+		panic(err)
 	}
 }
 
-func (p *Pool) HasErrors() bool {
-	for _, task := range p.Tasks {
-		if task.Err != nil {
-			return true
-		}
-	}
-	return false
-}
-
-func (p *Pool) Run() {
-	logrus.Debugln("Running %v task(s) at concurrency %v.", len(p.Tasks), p.concurrency)
-
-	for i := 0; i < p.concurrency; i++ {
-		go p.work()
+func (t *Tapa) warmUp() {
+	logrus.Infoln("warmUp() Started")
+	jobs := make(chan *http.Request, t.concurrentUsers)
+	results := make(chan *Timer, t.concurrentUsers)
+	for w := 1; w <= t.concurrentUsers; w++ {
+		go t.addRequestToQueue(jobs, results)
 	}
 
-	p.wg.Add(len(p.Tasks))
-	for _, task := range p.Tasks {
-		p.tasksChan <- task
+	for j := 1; j <= t.concurrentUsers; j++ {
+		req := *t.request
+		jobs <- &req
 	}
+	close(jobs)
 
-	close(p.tasksChan)
-
-	p.wg.Wait()
-}
-
-func (p *Pool) work() {
-	for task := range p.tasksChan {
-		task.Run(&p.wg)
+	for a := 1; a <= t.concurrentUsers; a++ {
+		<-results
 	}
+	time.Sleep(500 * time.Millisecond)
+
+	logrus.Infoln("warmUp() Finished")
 }
