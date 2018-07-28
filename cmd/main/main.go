@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/johnmcdnl/go-tapa"
@@ -11,17 +10,6 @@ import (
 
 func init() {
 	logrus.SetLevel(logrus.InfoLevel)
-	go testEndpoint()
-}
-
-func testEndpoint() {
-	handler := func(w http.ResponseWriter, r *http.Request) {
-		//time.Sleep(1 * time.Second)
-		logrus.Debugln("Hi there, I love %s!", r.URL.Path[1:])
-	}
-
-	http.HandleFunc("/", handler)
-	logrus.Fatal(http.ListenAndServe(":8532", nil))
 }
 
 func main() {
@@ -43,11 +31,7 @@ func main() {
 	})
 	t.Run()
 
-	fmt.Println(t)
-	fmt.Println("t.Mean", t.Mean)
-	fmt.Println("t.StdDev", t.StdDev)
-	fmt.Println("t.Min", t.Min)
-	fmt.Println("t.Max", t.Max)
-	fmt.Println("t.Duration", t.Duration)
-	fmt.Println("t.ErrorCount", t.ErrorCount)
+	t.Report()
+
+
 }

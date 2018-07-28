@@ -8,6 +8,7 @@ import (
 	"io"
 	"github.com/sirupsen/logrus"
 	"math"
+	"fmt"
 )
 
 type Tapa struct {
@@ -22,14 +23,21 @@ type Tapa struct {
 	expectFunc      func(r *http.Response) bool
 }
 
+func newProgressBar(total int) *pb.ProgressBar {
+	bar := pb.New(total)
+	bar.Width = 120
+	return bar
+}
+
 func New(users, requests int) *Tapa {
+
 	return &Tapa{
 		Timer:           newTimer(),
 		Timers:          new(Timers),
 		concurrentUsers: users,
 		requestsPerUser: requests,
 		totalRequests:   users * requests,
-		progressBar:     pb.New(users * requests),
+		progressBar:     newProgressBar(users * requests),
 	}
 
 }
@@ -60,17 +68,17 @@ func (t *Tapa) AddExpectation(fn func(resp *http.Response) bool) {
 
 func (t *Tapa) Run() {
 	t.Timer.start()
+	t.warmUp()
+	t.reset()
 	t.run()
 	t.Timer.stop()
 	t.calculate()
 }
 
 func (t *Tapa) run() {
-
-	t.warmUp()
-	t.reset()
-
 	t.progressBar.Start()
+	defer t.progressBar.Finish()
+
 	jobs := make(chan *http.Request, t.concurrentUsers)
 	results := make(chan *Timer, t.concurrentUsers*t.requestsPerUser)
 	for w := 1; w <= t.concurrentUsers; w++ {
@@ -86,7 +94,7 @@ func (t *Tapa) run() {
 	for a := 1; a <= t.concurrentUsers*t.requestsPerUser; a++ {
 		t.Add(<-results)
 	}
-	t.progressBar.Finish()
+
 }
 
 func (t *Tapa) addRequestToQueue(jobs <-chan *http.Request, results chan<- *Timer) {
@@ -118,7 +126,10 @@ func (t *Tapa) warmUp() {
 		t.progressBar = origBar
 	}()
 
-	t.progressBar = pb.StartNew(t.concurrentUsers)
+	t.progressBar = newProgressBar(t.concurrentUsers)
+	t.progressBar.Start()
+	defer t.progressBar.Finish()
+
 	logrus.Debugln("warmUp() Started")
 	jobs := make(chan *http.Request, t.concurrentUsers)
 	results := make(chan *Timer, t.concurrentUsers)
@@ -137,10 +148,18 @@ func (t *Tapa) warmUp() {
 		<-results
 	}
 
-	t.progressBar.Finish()
+
 	logrus.Debugln("warmUp() Finished")
 }
 
 func (t *Tapa) expect(resp *http.Response) bool {
 	return t.expectFunc(resp)
+}
+func (t *Tapa) Report() {
+	fmt.Println("t.Mean", t.Mean)
+	fmt.Println("t.StdDev", t.StdDev)
+	fmt.Println("t.Min", t.Min)
+	fmt.Println("t.Max", t.Max)
+	fmt.Println("t.Duration", t.Duration)
+	fmt.Println("t.ErrorCount", t.ErrorCount)
 }
