@@ -6,7 +6,6 @@ import (
 
 	"github.com/johnmcdnl/go-tapa"
 	"github.com/sirupsen/logrus"
-	"time"
 	"io/ioutil"
 )
 
@@ -17,7 +16,7 @@ func init() {
 
 func testEndpoint() {
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(1 * time.Second)
+		//time.Sleep(1 * time.Second)
 		logrus.Debugln("Hi there, I love %s!", r.URL.Path[1:])
 	}
 
@@ -45,10 +44,10 @@ func main() {
 	t.Run()
 
 	fmt.Println(t)
-	fmt.Println("mean", t.Mean)
-	fmt.Println(t.StdDev)
-	fmt.Println(t.Min)
-	fmt.Println(t.Max)
-	fmt.Println("suite", t.Duration)
-	fmt.Println("errCount", t.ErrorCount)
+	fmt.Println("t.Mean", t.Mean)
+	fmt.Println("t.StdDev", t.StdDev)
+	fmt.Println("t.Min", t.Min)
+	fmt.Println("t.Max", t.Max)
+	fmt.Println("t.Duration", t.Duration)
+	fmt.Println("t.ErrorCount", t.ErrorCount)
 }

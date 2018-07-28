@@ -7,7 +7,6 @@ import (
 	"github.com/pkg/errors"
 	"io"
 	"github.com/sirupsen/logrus"
-	"time"
 	"math"
 )
 
@@ -33,6 +32,10 @@ func New(users, requests int) *Tapa {
 		progressBar:     pb.New(users * requests),
 	}
 
+}
+
+func (t *Tapa) reset() {
+	t.Timers = new(Timers)
 }
 
 func (t *Tapa) String() string {
@@ -65,6 +68,7 @@ func (t *Tapa) Run() {
 func (t *Tapa) run() {
 
 	t.warmUp()
+	t.reset()
 
 	t.progressBar.Start()
 	jobs := make(chan *http.Request, t.concurrentUsers)
@@ -91,8 +95,8 @@ func (t *Tapa) addRequestToQueue(jobs <-chan *http.Request, results chan<- *Time
 		timer := newTimer()
 		timer.start()
 		resp, err := t.doRequest(req)
-		t.progressBar.Increment()
 		timer.stop()
+		t.progressBar.Increment()
 		if err != nil {
 			t.ErrorCount++
 		}
@@ -134,7 +138,6 @@ func (t *Tapa) warmUp() {
 	}
 
 	t.progressBar.Finish()
-	time.Sleep(500 * time.Millisecond)
 	logrus.Debugln("warmUp() Finished")
 }
 
