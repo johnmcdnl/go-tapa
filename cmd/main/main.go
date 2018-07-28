@@ -11,13 +11,13 @@ import (
 )
 
 func init() {
-	logrus.SetLevel(logrus.DebugLevel)
+	logrus.SetLevel(logrus.InfoLevel)
 	go testEndpoint()
 }
 
 func testEndpoint() {
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(1 * time.Second)
 		logrus.Debugln("Hi there, I love %s!", r.URL.Path[1:])
 	}
 

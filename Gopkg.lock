@@ -10,6 +10,14 @@
   version = "0.2"
 
 [[projects]]
+  digest = "1:e2d1d410fb367567c2b53ed9e2d719d3c1f0891397bb2fa49afd747cfbf1e8e4"
+  name = "github.com/mattn/go-runewidth"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "9e777a8366cce605130a531d2cd6363d07ad7317"
+  version = "v0.0.2"
+
+[[projects]]
   digest = "1:40e195917a951a8bf867cd05de2a46aaf1806c50cf92eebf4c16f78cd196f747"
   name = "github.com/pkg/errors"
   packages = ["."]
@@ -44,6 +52,14 @@
   pruneopts = "UT"
   revision = "e072cadbbdc8dd3d3ffa82b8b4b9304c261d9311"
 
+[[projects]]
+  digest = "1:d8cd4f14785b5ae65100524a29ebba8b9dfc5401020fe7504f80b438bb8e8e0d"
+  name = "gopkg.in/cheggaaa/pb.v1"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "2af8bbdea9e99e83b3ac400d8f6b6d1b8cbbf338"
+  version = "v1.0.25"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
@@ -51,6 +67,7 @@
     "github.com/google/uuid",
     "github.com/pkg/errors",
     "github.com/sirupsen/logrus",
+    "gopkg.in/cheggaaa/pb.v1",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1

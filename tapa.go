@@ -3,11 +3,12 @@ package tapa
 import (
 	"encoding/json"
 	"net/http"
-
+	"gopkg.in/cheggaaa/pb.v1"
 	"github.com/pkg/errors"
 	"io"
 	"github.com/sirupsen/logrus"
 	"time"
+	"math"
 )
 
 type Tapa struct {
@@ -17,9 +18,9 @@ type Tapa struct {
 	concurrentUsers int
 	requestsPerUser int
 	totalRequests   int
-
-	request    *http.Request
-	expectFunc func(r *http.Response) bool
+	progressBar     *pb.ProgressBar
+	request         *http.Request
+	expectFunc      func(r *http.Response) bool
 }
 
 func New(users, requests int) *Tapa {
@@ -29,6 +30,7 @@ func New(users, requests int) *Tapa {
 		concurrentUsers: users,
 		requestsPerUser: requests,
 		totalRequests:   users * requests,
+		progressBar:     pb.New(users * requests),
 	}
 
 }
@@ -64,6 +66,7 @@ func (t *Tapa) run() {
 
 	t.warmUp()
 
+	t.progressBar.Start()
 	jobs := make(chan *http.Request, t.concurrentUsers)
 	results := make(chan *Timer, t.concurrentUsers*t.requestsPerUser)
 	for w := 1; w <= t.concurrentUsers; w++ {
@@ -79,13 +82,16 @@ func (t *Tapa) run() {
 	for a := 1; a <= t.concurrentUsers*t.requestsPerUser; a++ {
 		t.Add(<-results)
 	}
+	t.progressBar.Finish()
 }
 
 func (t *Tapa) addRequestToQueue(jobs <-chan *http.Request, results chan<- *Timer) {
+
 	for req := range jobs {
 		timer := newTimer()
 		timer.start()
 		resp, err := t.doRequest(req)
+		t.progressBar.Increment()
 		timer.stop()
 		if err != nil {
 			t.ErrorCount++
@@ -103,10 +109,17 @@ func (t *Tapa) doRequest(req *http.Request) (*http.Response, error) {
 }
 
 func (t *Tapa) warmUp() {
+	origBar := t.progressBar
+	defer func() {
+		t.progressBar = origBar
+	}()
+
+	t.progressBar = pb.StartNew(t.concurrentUsers)
 	logrus.Debugln("warmUp() Started")
 	jobs := make(chan *http.Request, t.concurrentUsers)
 	results := make(chan *Timer, t.concurrentUsers)
-	for w := 1; w <= t.concurrentUsers; w++ {
+
+	for w := 0; w < int(math.Ceil(float64(t.concurrentUsers)/float64(7))); w++ {
 		go t.addRequestToQueue(jobs, results)
 	}
 
@@ -119,8 +132,9 @@ func (t *Tapa) warmUp() {
 	for a := 1; a <= t.concurrentUsers; a++ {
 		<-results
 	}
-	time.Sleep(500 * time.Millisecond)
 
+	t.progressBar.Finish()
+	time.Sleep(500 * time.Millisecond)
 	logrus.Debugln("warmUp() Finished")
 }
 
