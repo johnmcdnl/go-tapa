@@ -13,10 +13,13 @@ import (
 type Tapa struct {
 	*Timer  `json:"timer"`
 	*Timers `json:"timers"`
+	ErrorCount      int
 	concurrentUsers int
 	requestsPerUser int
 	totalRequests   int
-	request         *http.Request
+
+	request    *http.Request
+	expectFunc func(r *http.Response) bool
 }
 
 func New(users, requests int) *Tapa {
@@ -44,6 +47,10 @@ func (t *Tapa) AddRequest(method, url string, body io.Reader) {
 		panic(err)
 	}
 	t.request = req
+}
+
+func (t *Tapa) AddExpectation(fn func(resp *http.Response) bool) {
+	t.expectFunc = fn
 }
 
 func (t *Tapa) Run() {
@@ -78,21 +85,25 @@ func (t *Tapa) addRequestToQueue(jobs <-chan *http.Request, results chan<- *Time
 	for req := range jobs {
 		timer := newTimer()
 		timer.start()
-		t.doRequest(req)
+		resp, err := t.doRequest(req)
 		timer.stop()
+		if err != nil {
+			t.ErrorCount++
+		}
+		if !t.expect(resp) {
+			t.ErrorCount++
+		}
+
 		results <- timer
 	}
 }
 
-func (t *Tapa) doRequest(req *http.Request) {
-	_, err := http.DefaultClient.Do(req)
-	if err != nil {
-		panic(err)
-	}
+func (t *Tapa) doRequest(req *http.Request) (*http.Response, error) {
+	return http.DefaultClient.Do(req)
 }
 
 func (t *Tapa) warmUp() {
-	logrus.Infoln("warmUp() Started")
+	logrus.Debugln("warmUp() Started")
 	jobs := make(chan *http.Request, t.concurrentUsers)
 	results := make(chan *Timer, t.concurrentUsers)
 	for w := 1; w <= t.concurrentUsers; w++ {
@@ -110,5 +121,9 @@ func (t *Tapa) warmUp() {
 	}
 	time.Sleep(500 * time.Millisecond)
 
-	logrus.Infoln("warmUp() Finished")
+	logrus.Debugln("warmUp() Finished")
+}
+
+func (t *Tapa) expect(resp *http.Response) bool {
+	return t.expectFunc(resp)
 }

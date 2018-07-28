@@ -3,6 +3,7 @@ package tapa
 import (
 	"math"
 	"time"
+	"sort"
 )
 
 type Timers struct {
@@ -22,6 +23,7 @@ func (t *Timers) Add(timer *Timer) {
 }
 
 func (t *Timers) calculate() {
+	t.sort()
 	t.calcCumulative()
 	t.calcMean()
 	t.calcVariance()
@@ -85,4 +87,14 @@ func (t *Timers) calcMin() time.Duration {
 		}
 	}
 	return t.Min
+}
+
+func (t *Timers) calcPercentile(n int) time.Duration {
+	return 0
+}
+
+func (t *Timers) sort() {
+	sort.Slice(t.Timers, func(i, j int) bool {
+		return t.Timers[i].Duration < t.Timers[j].Duration
+	})
 }
