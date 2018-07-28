@@ -2,25 +2,27 @@ package tapa
 
 import (
 	"encoding/json"
-	"net/http"
-	"gopkg.in/cheggaaa/pb.v1"
-	"github.com/pkg/errors"
-	"io"
-	"github.com/sirupsen/logrus"
-	"math"
 	"fmt"
+	"io"
+	"math"
+	"net/http"
+
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+	"gopkg.in/cheggaaa/pb.v1"
 )
 
+//Tapa needs a TODO comment
 type Tapa struct {
-	*Timer  `json:"timer"`
-	*Timers `json:"timers"`
+	*Timer          `json:"timer"`
+	*Timers         `json:"timers"`
 	ErrorCount      int
 	concurrentUsers int
 	requestsPerUser int
 	totalRequests   int
 	progressBar     *pb.ProgressBar
 	request         *http.Request
-	expectFunc      func(r *http.Response) bool
+	expectFunc      []func(r *http.Response) bool
 }
 
 func newProgressBar(total int) *pb.ProgressBar {
@@ -29,6 +31,7 @@ func newProgressBar(total int) *pb.ProgressBar {
 	return bar
 }
 
+// New tapa
 func New(users, requests int) *Tapa {
 
 	return &Tapa{
@@ -54,7 +57,8 @@ func (t *Tapa) String() string {
 	return string(j)
 }
 
-func (t *Tapa) AddRequest(method, url string, body io.Reader) {
+// AddRequest adds the HTTP endpoint in test to the suite
+func (t *Tapa) AddRequest(method, url string, header http.Header, body io.Reader) {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		panic(err)
@@ -62,10 +66,12 @@ func (t *Tapa) AddRequest(method, url string, body io.Reader) {
 	t.request = req
 }
 
+// AddExpectation adds an expectation that shoudl be satisfied by every resposne
 func (t *Tapa) AddExpectation(fn func(resp *http.Response) bool) {
-	t.expectFunc = fn
+	t.expectFunc = append(t.expectFunc, fn)
 }
 
+//Run executes the tests
 func (t *Tapa) Run() {
 	t.Timer.start()
 	t.warmUp()
@@ -148,13 +154,19 @@ func (t *Tapa) warmUp() {
 		<-results
 	}
 
-
 	logrus.Debugln("warmUp() Finished")
 }
 
 func (t *Tapa) expect(resp *http.Response) bool {
-	return t.expectFunc(resp)
+	for _, fn := range t.expectFunc {
+		if !fn(resp) {
+			return false
+		}
+	}
+	return true
 }
+
+// Report generates and outputs a report of the statistics
 func (t *Tapa) Report() {
 	fmt.Println("t.Mean", t.Mean)
 	fmt.Println("t.StdDev", t.StdDev)
