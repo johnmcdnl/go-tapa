@@ -1,177 +1,120 @@
 package tapa
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
-	"math"
+	"math/rand"
 	"net/http"
+	"sync"
+	"time"
 
-	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
-	"gopkg.in/cheggaaa/pb.v1"
+	"github.com/johnmcdnl/go-tapa/stopwatch"
+	pb "gopkg.in/cheggaaa/pb.v1"
 )
 
-//Tapa needs a TODO comment
+// Tapa is a collection of tests
 type Tapa struct {
-	*Timer          `json:"timer"`
-	*Timers         `json:"timers"`
-	ErrorCount      int
-	concurrentUsers int
+	stopwatch       stopwatch.Stopwatch
+	client          *http.Client
+	requests        []*Request
+	users           int
 	requestsPerUser int
-	totalRequests   int
-	progressBar     *pb.ProgressBar
-	request         *http.Request
-	expectFunc      []func(r *http.Response) bool
+	delayMin        time.Duration
+	delayMax        time.Duration
+	rand            *rand.Rand
 }
 
-func newProgressBar(total int) *pb.ProgressBar {
-	bar := pb.New(total)
-	bar.Width = 120
-	return bar
+// New creates a new suite with default params
+func New() *Tapa {
+	var t Tapa
+	t.rand = rand.New(rand.NewSource(time.Now().UnixNano()))
+	t.WithClient(http.DefaultClient)
+
+	return &t
 }
 
-// New tapa
-func New(users, requests int) *Tapa {
+// WithClient allows the consumer to provide their own client
+func (t *Tapa) WithClient(client *http.Client) {
+	t.client = client
+}
 
-	return &Tapa{
-		Timer:           newTimer(),
-		Timers:          new(Timers),
-		concurrentUsers: users,
-		requestsPerUser: requests,
-		totalRequests:   users * requests,
-		progressBar:     newProgressBar(users * requests),
+// WithRequest adds a request to the suite
+func (t *Tapa) WithRequest(req *Request) {
+	if req.users == 0 || t.users != 0 {
+		req.users = t.users
+	}
+	if req.requestsPerUser == 0 || t.requestsPerUser != 0 {
+		req.requestsPerUser = t.requestsPerUser
+	}
+	if req.client == nil || t.client != nil {
+		req.client = t.client
 	}
 
-}
-
-func (t *Tapa) reset() {
-	t.Timers = new(Timers)
-}
-
-func (t *Tapa) String() string {
-	j, err := json.MarshalIndent(t, "", "\t")
-	if err != nil {
-		panic(errors.Wrap(err, "failed to get a tapa.String()"))
+	if req.delayMin == 0 || t.delayMin != 0 {
+		req.delayMin = t.delayMin
 	}
-	return string(j)
-}
-
-// AddRequest adds the HTTP endpoint in test to the suite
-func (t *Tapa) AddRequest(method, url string, header http.Header, body io.Reader) {
-	req, err := http.NewRequest(method, url, body)
-	if err != nil {
-		panic(err)
+	if req.delayMax == 0 || t.delayMax != 0 {
+		req.delayMax = t.delayMax
 	}
-	t.request = req
+
+	t.requests = append(t.requests, req)
 }
 
-// AddExpectation adds an expectation that shoudl be satisfied by every resposne
-func (t *Tapa) AddExpectation(fn func(resp *http.Response) bool) {
-	t.expectFunc = append(t.expectFunc, fn)
+// WithDelay adds a randomised delay between requests
+func (t *Tapa) WithDelay(min, max time.Duration) {
+	t.delayMin = min
+	t.delayMax = max
 }
 
-//Run executes the tests
+// WithUsers defines how many concurrent users there will be
+func (t *Tapa) WithUsers(users int) {
+	t.users = users
+}
+
+// WithRequestsPerUser gives a default number of requests per user
+func (t *Tapa) WithRequestsPerUser(reqsPerUser int) {
+	t.requestsPerUser = reqsPerUser
+}
+
+func (t *Tapa) getDelay() time.Duration {
+	if t.delayMin == t.delayMin {
+		return t.delayMin
+	}
+	return time.Duration(t.rand.Intn(int(t.delayMax-t.delayMin)) + int(t.delayMin))
+}
+
+// Run executes the suite
 func (t *Tapa) Run() {
-	t.Timer.start()
-	t.warmUp()
-	t.reset()
-	t.run()
-	t.Timer.stop()
-	t.calculate()
+
+	// var pool = pb.NewPool([]*pb.ProgressBar{}...)
+	var progressBars []*pb.ProgressBar
+	for _, req := range t.requests {
+		size := req.users * req.requestsPerUser
+		req.progressBar = pb.New(size)
+		req.progressBar.Width = 120
+		progressBars = append(progressBars, req.progressBar)
+
+	}
+
+	pool := pb.NewPool(progressBars...)
+
+	var wg sync.WaitGroup
+	pool.Start()
+	for _, req := range t.requests {
+		wg.Add(1)
+		t.runRequest(&wg, req)
+	}
+	pool.Stop()
+	wg.Wait()
 }
 
-func (t *Tapa) run() {
-	t.progressBar.Start()
-	defer t.progressBar.Finish()
-
-	jobs := make(chan *http.Request, t.concurrentUsers)
-	results := make(chan *Timer, t.concurrentUsers*t.requestsPerUser)
-	for w := 1; w <= t.concurrentUsers; w++ {
-		go t.addRequestToQueue(jobs, results)
-	}
-
-	for j := 1; j <= t.concurrentUsers*t.requestsPerUser; j++ {
-		req := *t.request
-		jobs <- &req
-	}
-	close(jobs)
-
-	for a := 1; a <= t.concurrentUsers*t.requestsPerUser; a++ {
-		t.Add(<-results)
-	}
-
+func (t *Tapa) runRequest(wg *sync.WaitGroup, req *Request) {
+	defer wg.Done()
+	req.execute()
 }
 
-func (t *Tapa) addRequestToQueue(jobs <-chan *http.Request, results chan<- *Timer) {
-
-	for req := range jobs {
-		timer := newTimer()
-		timer.start()
-		resp, err := t.doRequest(req)
-		timer.stop()
-		t.progressBar.Increment()
-		if err != nil {
-			t.ErrorCount++
-		}
-		if !t.expect(resp) {
-			t.ErrorCount++
-		}
-
-		results <- timer
-	}
-}
-
-func (t *Tapa) doRequest(req *http.Request) (*http.Response, error) {
-	return http.DefaultClient.Do(req)
-}
-
-func (t *Tapa) warmUp() {
-	origBar := t.progressBar
-	defer func() {
-		t.progressBar = origBar
-	}()
-
-	t.progressBar = newProgressBar(t.concurrentUsers)
-	t.progressBar.Start()
-	defer t.progressBar.Finish()
-
-	logrus.Debugln("warmUp() Started")
-	jobs := make(chan *http.Request, t.concurrentUsers)
-	results := make(chan *Timer, t.concurrentUsers)
-
-	for w := 0; w < int(math.Ceil(float64(t.concurrentUsers)/float64(7))); w++ {
-		go t.addRequestToQueue(jobs, results)
-	}
-
-	for j := 1; j <= t.concurrentUsers; j++ {
-		req := *t.request
-		jobs <- &req
-	}
-	close(jobs)
-
-	for a := 1; a <= t.concurrentUsers; a++ {
-		<-results
-	}
-
-	logrus.Debugln("warmUp() Finished")
-}
-
-func (t *Tapa) expect(resp *http.Response) bool {
-	for _, fn := range t.expectFunc {
-		if !fn(resp) {
-			return false
-		}
-	}
-	return true
-}
-
-// Report generates and outputs a report of the statistics
+// Report outputs stats
 func (t *Tapa) Report() {
-	fmt.Println("t.Mean", t.Mean)
-	fmt.Println("t.StdDev", t.StdDev)
-	fmt.Println("t.Min", t.Min)
-	fmt.Println("t.Max", t.Max)
-	fmt.Println("t.Duration", t.Duration)
-	fmt.Println("t.ErrorCount", t.ErrorCount)
+	// for _, req := range t.requests {
+	// 	fmt.Println(req.durations, len(req.durations))
+	// 	fmt.Println(req.errors, len(req.errors))
+	// }
 }

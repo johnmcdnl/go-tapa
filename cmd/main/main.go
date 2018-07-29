@@ -1,8 +1,9 @@
 package main
 
 import (
-	"io/ioutil"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/johnmcdnl/go-tapa"
 	"github.com/sirupsen/logrus"
@@ -13,46 +14,33 @@ func init() {
 }
 
 func main() {
-	var t = tapa.New(50, 10)
-	t.AddRequest(http.MethodGet, "http://localhost:8532", nil, nil)
-	t.AddExpectation(func(resp *http.Response) bool {
+	var t = tapa.New()
+	t.WithUsers(50)
+	t.WithRequestsPerUser(10)
+	t.WithDelay(time.Duration(500*time.Millisecond), time.Duration(500*time.Millisecond))
+
+	req := tapa.NewRequestMust(
+		http.NewRequest(http.MethodGet, "http://localhost:8532", nil),
+	)
+	req.WithExpectation(func(resp *http.Response) error {
 		if resp.StatusCode != http.StatusOK {
-			return false
+			return fmt.Errorf("expected to get a 200 status code but got %d", resp.StatusCode)
 		}
-		b, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return false
-		}
-		defer resp.Body.Close()
-		if len(b) != 0 {
-			return false
-		}
-		return true
+		return nil
 	})
-	t.AddExpectation(func(resp *http.Response) bool {
-		b, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return false
+	t.WithRequest(req)
+
+	req1 := tapa.NewRequestMust(
+		http.NewRequest(http.MethodGet, "http://localhost:8532", nil),
+	)
+	req1.WithExpectation(func(resp *http.Response) error {
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("expected to get a 200 status code but got %d", resp.StatusCode)
 		}
-		defer resp.Body.Close()
-		if len(b) != 0 {
-			return false
-		}
-		return true
+		return nil
 	})
-	t.AddExpectation(func(resp *http.Response) bool {
-		b, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return false
-		}
-		defer resp.Body.Close()
-		if len(b) != 0 {
-			return false
-		}
-		return true
-	})
+	t.WithRequest(req1)
+
 	t.Run()
-
 	t.Report()
-
 }
