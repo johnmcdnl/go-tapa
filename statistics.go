@@ -84,10 +84,10 @@ func (s *Statistic) setMax() {
 func (s *Statistic) setMin() {
 	s.Min = Duration(math.MaxInt64)
 	for _, d := range s.durations {
+		if d == 0 {
+			panic("why is there an empty duration")
+		}
 		if Duration(d) < s.Min {
-			if d == 0 {
-				panic("why is there an empty duration")
-			}
 			s.Min = Duration(d)
 		}
 	}
