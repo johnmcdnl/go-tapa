@@ -16,6 +16,7 @@ type ExpecationFunc func(resp *http.Response) error
 
 // Request contains details of the request and response
 type Request struct {
+	name            string
 	client          *http.Client
 	request         *http.Request
 	jobs            chan *http.Request
@@ -47,6 +48,29 @@ func NewRequestMust(req *http.Request, err error) *Request {
 	return NewRequest(req)
 }
 
+// Name returns the name of the test
+func (r *Request) Name() string {
+	if r.name == "" {
+		r.name = fmt.Sprintf("%s %s", r.request.Method, r.request.URL.String())
+	}
+	return r.name
+}
+
+// WithName allows user to set a name for a test request
+func (r *Request) WithName(name string) {
+	r.name = name
+}
+
+// WithUsers defines how many concurrent users there will be
+func (r *Request) WithUsers(users int) {
+	r.users = users
+}
+
+// WithRequestsPerUser gives a default number of requests per user
+func (r *Request) WithRequestsPerUser(reqsPerUser int) {
+	r.requestsPerUser = reqsPerUser
+}
+
 // WithExpectation adds an ExpecationFunc to the request
 func (r *Request) WithExpectation(fn ExpecationFunc) {
 	r.expectations = append(r.expectations, fn)
@@ -59,14 +83,21 @@ func (r *Request) WithClient(client *http.Client) {
 
 // WithDelay adds a randomised delay between requests
 func (r *Request) WithDelay(min, max time.Duration) {
+	if min > max {
+		r.delayMin = max
+		r.delayMax = min
+		return
+	}
 	r.delayMin = min
 	r.delayMax = max
+
 }
 
 func (r *Request) getDelay() time.Duration {
 	if r.delayMin == r.delayMin {
 		return r.delayMin
 	}
+
 	return time.Duration(r.rand.Intn(int(r.delayMax-r.delayMin)) + int(r.delayMin))
 }
 
@@ -115,17 +146,22 @@ func (r *Request) executeRequestJobs(responses chan interface{}) {
 		r.progressBar.Increment()
 		if err != nil {
 			responses <- err
+			continue
 		}
 		if err := r.validate(resp); err != nil {
 			responses <- err
+			continue
 		}
-
 		responses <- s.Duration()
 	}
 
 }
 
 func (r *Request) validate(resp *http.Response) error {
+
+	if resp == nil {
+		panic("this resp is nil")
+	}
 	for _, fn := range r.expectations {
 		if err := fn(resp); err != nil {
 			return err
