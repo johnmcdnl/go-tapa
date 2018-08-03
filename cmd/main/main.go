@@ -15,7 +15,7 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 	logrus.SetLevel(logrus.InfoLevel)
 	go server.Server(8532)
-	time.Sleep(1 * time.Second)
+	time.Sleep(500 * time.Millisecond)
 }
 
 func main() {
